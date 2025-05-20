@@ -1,0 +1,1068 @@
+Todo .. just pass the type from the main activity  not  create  the quiz  in it , so the quiz is retrieved from the shared preference using QuizPreferenceManager.
+
+TODO .. the main activity  does not include the QuizSharedPreference  it  was in the QuizFragment
+
+Todo .. the user can just select one answer 
+
+Todo .. FIX when click the next page show in all case that the user should select asnwer  even if it is select 
+
+and solve any other probelm  that you see : 
+
+
+
+Main Activity : 
+ @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        // Enable edge-to-edge display
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
+
+        // Set up toolbar
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
+        // Only add the fragment when activity is first created
+        if (savedInstanceState == null) {
+//            loadHomeFragment();
+            // Create and load the quiz fragment with history quiz type
+            // Get QuizPreferenceManager instance
+            QuizPreferenceManager quizManager = QuizPreferenceManager.getInstance(this);
+
+            // Get a history quiz
+            Quiz historyQuiz = quizManager.getQuiz(QuizPreferenceManager.TYPE_HISTORY);
+            quizFragment = QuizFragment.newInstance(historyQuiz);
+
+            getSupportFragmentManager()
+                    .beginTransaction()
+                    .replace(R.id.fragment_container, quizFragment)
+                    .commit();
+        }
+    }
+	
+	
+________________________________________________________________________________________________________________________________________________________________________________________________
+	
+	
+public class QuestionFragment extends Fragment
+{
+    private static final String ARG_QUESTION = "question";
+
+    private Question question;
+    private TextView questionTextView;
+    private LinearLayout answersContainer;
+    private Button previousButton;
+    private Button nextButton;
+    private List<AnswerView> answerViews = new ArrayList<>();
+    private int selectedAnswerIndex = -1;
+    private ViewPager2 viewPager;
+
+    /**
+     * Create a new instance of QuestionFragment with the provided question.
+     *
+     * @param question The question to display
+     * @return A new instance of QuestionFragment
+     */
+    public static QuestionFragment newInstance(Question question) {
+        QuestionFragment fragment = new QuestionFragment();
+        Bundle args = new Bundle();
+        args.putSerializable(ARG_QUESTION, question);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            question = (Question) getArguments().getSerializable(ARG_QUESTION);
+        }
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_question, container, false);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        // Get the parent ViewPager2 instance
+        viewPager = getActivity().findViewById(R.id.quiz_view_pager);
+        Fragment parentFragment = getParentFragment();
+        if (parentFragment instanceof QuizFragment) {
+            viewPager = ((QuizFragment) parentFragment).getViewPager();
+        }
+
+        // Initialize views
+        questionTextView = view.findViewById(R.id.text_question);
+        answersContainer = view.findViewById(R.id.layout_answers_container);
+        previousButton = view.findViewById(R.id.button_previous);
+        nextButton = view.findViewById(R.id.button_next);
+
+        // Set up question text
+        if (question != null) {
+            questionTextView.setText(question.getQuestion());
+            setupAnswerViews();
+        }
+
+        // Set up navigation buttons
+        setupNavigationButtons();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        // Update button states based on the current position when fragment becomes visible
+        updateButtonStates();
+    }
+
+    /**
+     * Create AnswerView for each answer in the question and add them to the container
+     */
+    private void setupAnswerViews() {
+        answersContainer.removeAllViews();
+        answerViews.clear();
+
+        if (question.getAnswers() == null || question.getAnswers().isEmpty()) {
+            return;
+        }
+
+        // For each answer, create an AnswerView and add it to the container
+        for (int i = 0; i < question.getAnswers().size(); i++) {
+            final String answer = question.getAnswers().get(i);
+            final int index = i;
+
+            // Create AnswerView and set the answer text
+            final AnswerView answerView = new AnswerView(requireContext());
+            answerView.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+            answerView.setAnswerText(answer);
+
+            // Add click listener to handle radio button selection
+            answerView.setOnClickListener(v -> {
+                // Clear all selections first
+                for (AnswerView view : answerViews) {
+                    view.setChecked(false);
+                }
+
+                // Set this answer as selected
+                answerView.setChecked(true);
+                selectedAnswerIndex = index;
+            });
+
+            // Add to our collections
+            answersContainer.addView(answerView);
+            answerViews.add(answerView);
+        }
+    }
+
+    /**
+     * Configure the previous and next buttons
+     */
+    private void setupNavigationButtons() {
+        // Previous button click listener
+        previousButton.setOnClickListener(v -> {
+            if (viewPager != null) {
+                int currentPosition = viewPager.getCurrentItem();
+                if (currentPosition > 0) {
+                    viewPager.setCurrentItem(currentPosition - 1);
+                }
+            }
+        });
+
+        // Next button click listener
+        nextButton.setOnClickListener(v -> {
+            // If an answer is selected, proceed to the next question
+            if (selectedAnswerIndex != -1) {
+                boolean isCorrect = selectedAnswerIndex == question.getRightAnswerIndex();
+                String message = isCorrect ?
+                        "Correct answer!" :
+                        "Wrong answer. The correct answer is " +
+                                question.getAnswers().get(question.getRightAnswerIndex());
+
+                Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+
+                // Save the user's answer (in a real app, you would store this to calculate results)
+
+                // Move to the next question
+                if (viewPager != null) {
+                    int currentPosition = viewPager.getCurrentItem();
+                    int totalItems = viewPager.getAdapter() != null ?
+                            viewPager.getAdapter().getItemCount() : 0;
+
+                    if (currentPosition < totalItems - 1) {
+                        viewPager.setCurrentItem(currentPosition + 1);
+                    }
+                }
+            } else {
+                // No answer selected
+                Toast.makeText(getContext(),
+                        "Please select an answer", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // Update button states based on the current position
+        updateButtonStates();
+    }
+
+    /**
+     * Updates the previous and next button states based on the current position in the ViewPager
+     */
+    private void updateButtonStates() {
+        if (viewPager != null && viewPager.getAdapter() != null) {
+            int currentPosition = viewPager.getCurrentItem();
+            int totalItems = viewPager.getAdapter().getItemCount();
+
+            // Enable/disable the previous button based on position
+            previousButton.setEnabled(currentPosition > 0);
+
+            // For the last question fragment, disable the previous button
+            if (currentPosition == totalItems - 2) {
+                // This is the last question before the result page
+                nextButton.setText(R.string.button_finish);
+            } else {
+                nextButton.setText(R.string.button_next);
+            }
+        }
+    }
+
+    /**
+     * Check if the selected answer is correct
+     *
+     * @return true if the selected answer is correct, false otherwise
+     */
+    public boolean isAnswerCorrect() {
+        return selectedAnswerIndex == question.getRightAnswerIndex();
+    }
+
+    /**
+     * Get the index of the currently selected answer
+     *
+     * @return The index of the selected answer, or -1 if no answer is selected
+     */
+    public int getSelectedAnswerIndex() {
+        return selectedAnswerIndex;
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
+package com.example.category_view.ui.fragments;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import androidx.viewpager2.widget.ViewPager2;
+
+import com.example.category_view.R;
+import com.example.category_view.data.local.QuizPreferenceManager;
+import com.example.category_view.entity.Quiz;
+import com.example.category_view.ui.adapter.QuizPagerAdapter;
+
+public class QuizFragment extends Fragment {
+
+    private static final String ARG_QUIZ = "quiz";
+
+    private Quiz quiz;
+    private ViewPager2 viewPager;
+    private QuizPagerAdapter quizPagerAdapter;
+    private TextView quizTitleTextView;
+
+    public static QuizFragment newInstance(Quiz quiz) {
+        QuizFragment fragment = new QuizFragment();
+        Bundle args = new Bundle();
+        args.putSerializable(ARG_QUIZ, quiz);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            quiz = (Quiz) getArguments().getSerializable(ARG_QUIZ);
+        }
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_quiz, container, false);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        // Initialize views
+        quizTitleTextView = view.findViewById(R.id.text_quiz_title);
+        viewPager = view.findViewById(R.id.quiz_view_pager);
+
+        // Set up quiz title
+        if (quiz != null) {
+            quizTitleTextView.setText(quiz.getType() + " Quiz");
+        }
+
+        // Set up adapter
+        if (quiz != null && getActivity() != null) {
+            quizPagerAdapter = new QuizPagerAdapter(getActivity(), quiz);
+            viewPager.setAdapter(quizPagerAdapter);
+
+            // Disable swiping between questions - users will navigate with buttons
+            viewPager.setUserInputEnabled(false);
+
+            // Register page change callback to update the question fragments
+            viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+                @Override
+                public void onPageSelected(int position) {
+                    super.onPageSelected(position);
+                    // This will be triggered when the page changes
+                    // Each QuestionFragment will handle its own button states
+                }
+            });
+        }
+    }
+
+    /**
+     * Navigate to the next question
+     */
+    public void nextQuestion() {
+        if (viewPager != null && viewPager.getCurrentItem() < quizPagerAdapter.getItemCount() - 1) {
+            viewPager.setCurrentItem(viewPager.getCurrentItem() + 1);
+        }
+    }
+
+    /**
+     * Navigate to the previous question
+     */
+    public void previousQuestion() {
+        if (viewPager != null && viewPager.getCurrentItem() > 0) {
+            viewPager.setCurrentItem(viewPager.getCurrentItem() - 1);
+        }
+    }
+
+    /**
+     * Get the current QuizPagerAdapter
+     * @return The adapter
+     */
+    public QuizPagerAdapter getQuizPagerAdapter() {
+        return quizPagerAdapter;
+    }
+
+    /**
+     * Get the current ViewPager2 instance
+     * @return The ViewPager2
+     */
+    public ViewPager2 getViewPager() {
+        return viewPager;
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
+package com.example.category_view.ui.fragments;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+
+import com.example.category_view.R;
+import com.example.category_view.entity.Quiz;
+
+public class ResultFragment extends Fragment
+{
+    private static final String ARG_QUIZ = "quiz";
+
+    private Quiz quiz;
+    private TextView titleTextView;
+    private TextView resultTextView;
+    private Button finishButton;
+
+    public static ResultFragment newInstance(Quiz quiz) {
+        ResultFragment fragment = new ResultFragment();
+        Bundle args = new Bundle();
+        args.putSerializable(ARG_QUIZ, quiz);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            quiz = (Quiz) getArguments().getSerializable(ARG_QUIZ);
+        }
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_result, container, false);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        // Initialize views
+        titleTextView = view.findViewById(R.id.text_result_title);
+        resultTextView = view.findViewById(R.id.text_result_summary);
+        finishButton = view.findViewById(R.id.button_finish);
+
+        // Set quiz type as title
+        if (quiz != null) {
+            titleTextView.setText(quiz.getType() + " Quiz Completed!");
+        }
+
+        // Calculate and display results
+        displayResults();
+
+        // Set up finish button
+        finishButton.setOnClickListener(v -> {
+            if (getActivity() != null) {
+                getActivity().finish();
+            }
+        });
+    }
+
+    private void displayResults() {
+        // In a real app, we would calculate the results based on user's answers
+        // For now, just display a placeholder
+        resultTextView.setText("Congratulations on completing the quiz!\n\n" +
+                "You can now view your detailed results or return to the main menu.");
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
+package com.example.category_view.ui.fragments;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+
+import com.example.category_view.R;
+import com.example.category_view.entity.Quiz;
+
+public class ResultFragment extends Fragment
+{
+    private static final String ARG_QUIZ = "quiz";
+
+    private Quiz quiz;
+    private TextView titleTextView;
+    private TextView resultTextView;
+    private Button finishButton;
+
+    public static ResultFragment newInstance(Quiz quiz) {
+        ResultFragment fragment = new ResultFragment();
+        Bundle args = new Bundle();
+        args.putSerializable(ARG_QUIZ, quiz);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            quiz = (Quiz) getArguments().getSerializable(ARG_QUIZ);
+        }
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_result, container, false);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        // Initialize views
+        titleTextView = view.findViewById(R.id.text_result_title);
+        resultTextView = view.findViewById(R.id.text_result_summary);
+        finishButton = view.findViewById(R.id.button_finish);
+
+        // Set quiz type as title
+        if (quiz != null) {
+            titleTextView.setText(quiz.getType() + " Quiz Completed!");
+        }
+
+        // Calculate and display results
+        displayResults();
+
+        // Set up finish button
+        finishButton.setOnClickListener(v -> {
+            if (getActivity() != null) {
+                getActivity().finish();
+            }
+        });
+    }
+
+    private void displayResults() {
+        // In a real app, we would calculate the results based on user's answers
+        // For now, just display a placeholder
+        resultTextView.setText("Congratulations on completing the quiz!\n\n" +
+                "You can now view your detailed results or return to the main menu.");
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
+package com.example.category_view.ui.adapter;
+
+import androidx.annotation.NonNull;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentActivity;
+import androidx.viewpager2.adapter.FragmentStateAdapter;
+
+import com.example.category_view.entity.Question;
+import com.example.category_view.entity.Quiz;
+import com.example.category_view.ui.fragments.QuestionFragment;
+import com.example.category_view.ui.fragments.ResultFragment;
+
+import java.util.ArrayList;
+
+public class QuizPagerAdapter extends FragmentStateAdapter {
+    private final Quiz quiz;
+    private final ArrayList<Fragment> fragments;
+
+    public QuizPagerAdapter(@NonNull FragmentActivity fragmentActivity, Quiz quiz) {
+        super(fragmentActivity);
+        this.quiz = quiz;
+        this.fragments = new ArrayList<>();
+
+        // Initialize fragments
+        initializeFragments();
+    }
+
+    private void initializeFragments() {
+        // Create question fragments
+        for (Question question : quiz.getQuestions()) {
+            fragments.add(QuestionFragment.newInstance(question));
+        }
+
+        // Add result fragment at the end
+        fragments.add(ResultFragment.newInstance(quiz));
+    }
+
+    @NonNull
+    @Override
+    public Fragment createFragment(int position) {
+        return fragments.get(position);
+    }
+
+    @Override
+    public int getItemCount() {
+        return fragments.size();
+    }
+
+    /**
+     * Get all fragments including both question fragments and result fragment
+     * @return List of fragments
+     */
+    public ArrayList<Fragment> getFragments() {
+        return fragments;
+    }
+
+    /**
+     * Get the quiz associated with this adapter
+     * @return Quiz object
+     */
+    public Quiz getQuiz() {
+        return quiz;
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
+package com.example.category_view.entity;
+
+import java.io.Serializable;
+import java.util.List;
+
+public class Quiz implements Serializable {
+    private String uuid;
+    private String type;
+    private List<Question> questions;
+
+    public Quiz() {
+        // Default constructor
+    }
+
+    public Quiz(String uuid, String type, List<Question> questions) {
+        this.uuid = uuid;
+        this.type = type;
+        this.questions = questions;
+    }
+
+    // Getters and setters
+    public String getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(String uuid) {
+        this.uuid = uuid;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public List<Question> getQuestions() {
+        return questions;
+    }
+
+    public void setQuestions(List<Question> questions) {
+        this.questions = questions;
+    }
+}
+
+________________________________________________________________________________________________________________________________________________________________________________________________
+package com.example.category_view.entity;
+
+import java.io.Serializable;
+
+public class Question implements Serializable {
+    private String uuid;
+    private String question;
+    private java.util.List<String> answers;
+    private int rightAnswerIndex;
+
+    public Question() {
+        // Default constructor
+    }
+
+    public Question(String uuid, String question, java.util.List<String> answers, int rightAnswerIndex) {
+        this.uuid = uuid;
+        this.question = question;
+        this.answers = answers;
+        this.rightAnswerIndex = rightAnswerIndex;
+    }
+
+    // Getters and setters
+    public String getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(String uuid) {
+        this.uuid = uuid;
+    }
+
+    public String getQuestion() {
+        return question;
+    }
+
+    public void setQuestion(String question) {
+        this.question = question;
+    }
+
+    public java.util.List<String> getAnswers() {
+        return answers;
+    }
+
+    public void setAnswers(java.util.List<String> answers) {
+        this.answers = answers;
+    }
+
+    public int getRightAnswerIndex() {
+        return rightAnswerIndex;
+    }
+
+    public void setRightAnswerIndex(int rightAnswerIndex) {
+        this.rightAnswerIndex = rightAnswerIndex;
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
+public class QuizPreferenceManager
+{
+    public static final String PREF_NAME = "quiz_preferences";
+    public static final String KEY_QUIZ = "quizzes_";
+
+    // Available quiz types
+    public static final String TYPE_GEOGRAPHY = "Geography";
+    public static final String TYPE_SCIENCE = "Science";
+    public static final String TYPE_HISTORY = "History";
+    public static final String TYPE_LITERATURE = "Literature";
+
+    // SharedPreferences instance
+    private final SharedPreferences sharedPreferences;
+
+    // Singleton instance
+    private static QuizPreferenceManager instance;
+
+    // Gson for JSON serialization/deserialization
+    private final Gson gson;
+
+    // Private constructor to enforce singleton pattern
+    private QuizPreferenceManager(Context context) {
+        sharedPreferences = context.getApplicationContext()
+                .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        gson = new Gson();
+
+        // Initialize quizzes if they don't exist
+        initializeQuizzes();
+    }
+
+    // Get singleton instance
+    public static synchronized QuizPreferenceManager getInstance(Context context) {
+        if (instance == null) {
+            instance = new QuizPreferenceManager(context);
+        }
+        return instance;
+    }
+
+    // Initialize and save quizzes if they don't exist
+    private void initializeQuizzes() {
+        // Check if we already have quizzes saved
+        if (!hasQuizzes(TYPE_GEOGRAPHY) || !hasQuizzes(TYPE_SCIENCE) ||
+                !hasQuizzes(TYPE_HISTORY) || !hasQuizzes(TYPE_LITERATURE)) {
+
+            // TODO: FETCH FROM REPOSITORY ON THE TOP OF IMPLEMENTATION IN THE METHOD
+
+            // For testing, create sample quizzes
+            saveQuizzes();
+        }
+    }
+
+    // Check if quizzes exist for a specific type
+    private boolean hasQuizzes(String type) {
+        String quizzesJson = sharedPreferences.getString(KEY_QUIZ + type, null);
+        return quizzesJson != null && !quizzesJson.isEmpty();
+    }
+
+    // Create and save sample quizzes for testing
+    private void saveQuizzes() {
+//        TODO CALL THE REPOSITORY TO CREATE THIS LISTS AFTER DOING FILTER ON TYPE OF COURS
+        // Create Geography quizzes
+        List<Quiz> geographyQuizzes = createGeographyQuizzes();
+        saveQuizzes(TYPE_GEOGRAPHY, geographyQuizzes);
+
+        // Create Science quizzes
+        List<Quiz> scienceQuizzes = createScienceQuizzes();
+        saveQuizzes(TYPE_SCIENCE, scienceQuizzes);
+
+        // Create History quizzes
+        List<Quiz> historyQuizzes = createHistoryQuizzes();
+        saveQuizzes(TYPE_HISTORY, historyQuizzes);
+
+        // Create Literature quizzes
+        List<Quiz> literatureQuizzes = createLiteratureQuizzes();
+        saveQuizzes(TYPE_LITERATURE, literatureQuizzes);
+    }
+
+    // Save quizzes of a specific type
+    private void saveQuizzes(String type, List<Quiz> quizzes) {
+        String quizzesJson = gson.toJson(quizzes);
+        sharedPreferences.edit().putString(KEY_QUIZ + type, quizzesJson).apply();
+    }
+
+    // Get all quizzes of a specific type
+    private List<Quiz> getQuizzes(String type) {
+        String quizzesJson = sharedPreferences.getString(KEY_QUIZ + type, null);
+        if (quizzesJson == null || quizzesJson.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Type listType = new TypeToken<ArrayList<Quiz>>(){}.getType();
+        return gson.fromJson(quizzesJson, listType);
+    }
+
+    // Get a random quiz of a specific type
+    public Quiz getQuiz(String type) {
+        List<Quiz> quizzes = getQuizzes(type);
+        if (quizzes.isEmpty()) {
+            return null;
+        }
+
+        // Get a random quiz
+        Random random = new Random();
+        int randomIndex = random.nextInt(quizzes.size());
+        return quizzes.get(randomIndex);
+    }
+
+    // Helper methods to create sample quizzes for testing
+
+    private List<Quiz> createGeographyQuizzes() {
+//        Todo.. this informations should came from the database
+        List<Quiz> quizzes = new ArrayList<>();
+
+        // Geography Quiz 1
+        List<Question> geographyQuestions1 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers1 = new ArrayList<>();
+        answers1.add("Paris");
+        answers1.add("London");
+        answers1.add("Berlin");
+        answers1.add("Rome");
+        geographyQuestions1.add(new Question(UUID.randomUUID().toString(), "What is the capital of France?", answers1, 0));
+
+        // Question 2
+        List<String> answers2 = new ArrayList<>();
+        answers2.add("Mississippi");
+        answers2.add("Nile");
+        answers2.add("Amazon");
+        answers2.add("Yangtze");
+        geographyQuestions1.add(new Question(UUID.randomUUID().toString(), "What is the longest river in the world?", answers2, 1));
+
+        // Question 3
+        List<String> answers3 = new ArrayList<>();
+        answers3.add("Russia");
+        answers3.add("Canada");
+        answers3.add("China");
+        answers3.add("United States");
+        geographyQuestions1.add(new Question(UUID.randomUUID().toString(), "What is the largest country by area?", answers3, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_GEOGRAPHY, geographyQuestions1));
+
+        // Geography Quiz 2
+        List<Question> geographyQuestions2 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers4 = new ArrayList<>();
+        answers4.add("Tokyo");
+        answers4.add("Delhi");
+        answers4.add("Shanghai");
+        answers4.add("Mexico City");
+        geographyQuestions2.add(new Question(UUID.randomUUID().toString(), "What is the most populous city in the world?", answers4, 0));
+
+        // Question 2
+        List<String> answers5 = new ArrayList<>();
+        answers5.add("Mount Kilimanjaro");
+        answers5.add("Mount Everest");
+        answers5.add("K2");
+        answers5.add("Mount Fuji");
+        geographyQuestions2.add(new Question(UUID.randomUUID().toString(), "What is the highest mountain in the world?", answers5, 1));
+
+        // Question 3
+        List<String> answers6 = new ArrayList<>();
+        answers6.add("Pacific Ocean");
+        answers6.add("Atlantic Ocean");
+        answers6.add("Indian Ocean");
+        answers6.add("Arctic Ocean");
+        geographyQuestions2.add(new Question(UUID.randomUUID().toString(), "What is the largest ocean in the world?", answers6, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_GEOGRAPHY, geographyQuestions2));
+
+        return quizzes;
+    }
+
+    private List<Quiz> createScienceQuizzes() {
+        List<Quiz> quizzes = new ArrayList<>();
+
+        // Science Quiz 1
+        List<Question> scienceQuestions1 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers1 = new ArrayList<>();
+        answers1.add("H2O");
+        answers1.add("CO2");
+        answers1.add("NaCl");
+        answers1.add("O2");
+        scienceQuestions1.add(new Question(UUID.randomUUID().toString(), "What is the chemical formula for water?", answers1, 0));
+
+        // Question 2
+        List<String> answers2 = new ArrayList<>();
+        answers2.add("Melting");
+        answers2.add("Freezing");
+        answers2.add("Condensation");
+        answers2.add("Evaporation");
+        scienceQuestions1.add(new Question(UUID.randomUUID().toString(), "What is the process called when a liquid turns into a gas?", answers2, 3));
+
+        // Question 3
+        List<String> answers3 = new ArrayList<>();
+        answers3.add("Mercury");
+        answers3.add("Venus");
+        answers3.add("Mars");
+        answers3.add("Jupiter");
+        scienceQuestions1.add(new Question(UUID.randomUUID().toString(), "Which planet is closest to the Sun?", answers3, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_SCIENCE, scienceQuestions1));
+
+        // Science Quiz 2
+        List<Question> scienceQuestions2 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers4 = new ArrayList<>();
+        answers4.add("Carbon");
+        answers4.add("Oxygen");
+        answers4.add("Hydrogen");
+        answers4.add("Nitrogen");
+        scienceQuestions2.add(new Question(UUID.randomUUID().toString(), "What is the most abundant element in the universe?", answers4, 2));
+
+        // Question 2
+        List<String> answers5 = new ArrayList<>();
+        answers5.add("Force = Mass × Acceleration");
+        answers5.add("E = mc²");
+        answers5.add("F = k × q1 × q2 / r²");
+        answers5.add("PV = nRT");
+        scienceQuestions2.add(new Question(UUID.randomUUID().toString(), "What is Newton's Second Law of Motion?", answers5, 0));
+
+        // Question 3
+        List<String> answers6 = new ArrayList<>();
+        answers6.add("206");
+        answers6.add("150");
+        answers6.add("256");
+        answers6.add("180");
+        scienceQuestions2.add(new Question(UUID.randomUUID().toString(), "How many bones are there in the adult human body?", answers6, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_SCIENCE, scienceQuestions2));
+
+        return quizzes;
+    }
+
+    private List<Quiz> createHistoryQuizzes() {
+        List<Quiz> quizzes = new ArrayList<>();
+
+        // History Quiz 1
+        List<Question> historyQuestions1 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers1 = new ArrayList<>();
+        answers1.add("1776");
+        answers1.add("1789");
+        answers1.add("1812");
+        answers1.add("1492");
+        historyQuestions1.add(new Question(UUID.randomUUID().toString(), "In what year was the Declaration of Independence signed?", answers1, 0));
+
+        // Question 2
+        List<String> answers2 = new ArrayList<>();
+        answers2.add("Julius Caesar");
+        answers2.add("Augustus");
+        answers2.add("Nero");
+        answers2.add("Constantine");
+        historyQuestions1.add(new Question(UUID.randomUUID().toString(), "Who was the first Emperor of Rome?", answers2, 1));
+
+        // Question 3
+        List<String> answers3 = new ArrayList<>();
+        answers3.add("1914-1918");
+        answers3.add("1939-1945");
+        answers3.add("1910-1914");
+        answers3.add("1915-1919");
+        historyQuestions1.add(new Question(UUID.randomUUID().toString(), "When did World War I take place?", answers3, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_HISTORY, historyQuestions1));
+
+        // History Quiz 2
+        List<Question> historyQuestions2 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers4 = new ArrayList<>();
+        answers4.add("George Washington");
+        answers4.add("Thomas Jefferson");
+        answers4.add("Abraham Lincoln");
+        answers4.add("John Adams");
+        historyQuestions2.add(new Question(UUID.randomUUID().toString(), "Who was the first President of the United States?", answers4, 0));
+
+        // Question 2
+        List<String> answers5 = new ArrayList<>();
+        answers5.add("1929");
+        answers5.add("1933");
+        answers5.add("1939");
+        answers5.add("1925");
+        historyQuestions2.add(new Question(UUID.randomUUID().toString(), "In what year did the Great Depression begin?", answers5, 0));
+
+        // Question 3
+        List<String> answers6 = new ArrayList<>();
+        answers6.add("France");
+        answers6.add("Russia");
+        answers6.add("England");
+        answers6.add("Germany");
+        historyQuestions2.add(new Question(UUID.randomUUID().toString(), "The Bolshevik Revolution took place in which country?", answers6, 1));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_HISTORY, historyQuestions2));
+
+        return quizzes;
+    }
+
+    private List<Quiz> createLiteratureQuizzes() {
+        List<Quiz> quizzes = new ArrayList<>();
+
+        // Literature Quiz 1
+        List<Question> literatureQuestions1 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers1 = new ArrayList<>();
+        answers1.add("William Shakespeare");
+        answers1.add("Charles Dickens");
+        answers1.add("Jane Austen");
+        answers1.add("Mark Twain");
+        literatureQuestions1.add(new Question(UUID.randomUUID().toString(), "Who wrote 'Romeo and Juliet'?", answers1, 0));
+
+        // Question 2
+        List<String> answers2 = new ArrayList<>();
+        answers2.add("Moby Dick");
+        answers2.add("The Great Gatsby");
+        answers2.add("To Kill a Mockingbird");
+        answers2.add("Pride and Prejudice");
+        literatureQuestions1.add(new Question(UUID.randomUUID().toString(), "Which novel begins with the line 'Call me Ishmael'?", answers2, 0));
+
+        // Question 3
+        List<String> answers3 = new ArrayList<>();
+        answers3.add("George Orwell");
+        answers3.add("Aldous Huxley");
+        answers3.add("Ray Bradbury");
+        answers3.add("J.R.R. Tolkien");
+        literatureQuestions1.add(new Question(UUID.randomUUID().toString(), "Who wrote '1984'?", answers3, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_LITERATURE, literatureQuestions1));
+
+        // Literature Quiz 2
+        List<Question> literatureQuestions2 = new ArrayList<>();
+
+        // Question 1
+        List<String> answers4 = new ArrayList<>();
+        answers4.add("Jane Austen");
+        answers4.add("Charlotte Bronte");
+        answers4.add("Emily Bronte");
+        answers4.add("Virginia Woolf");
+        literatureQuestions2.add(new Question(UUID.randomUUID().toString(), "Who wrote 'Pride and Prejudice'?", answers4, 0));
+
+        // Question 2
+        List<String> answers5 = new ArrayList<>();
+        answers5.add("Hamlet");
+        answers5.add("Macbeth");
+        answers5.add("Othello");
+        answers5.add("King Lear");
+        literatureQuestions2.add(new Question(UUID.randomUUID().toString(), "Which Shakespeare play features the character Ophelia?", answers5, 0));
+
+        // Question 3
+        List<String> answers6 = new ArrayList<>();
+        answers6.add("J.K. Rowling");
+        answers6.add("J.R.R. Tolkien");
+        answers6.add("C.S. Lewis");
+        answers6.add("Philip Pullman");
+        literatureQuestions2.add(new Question(UUID.randomUUID().toString(), "Who is the author of the 'Harry Potter' series?", answers6, 0));
+
+        quizzes.add(new Quiz(UUID.randomUUID().toString(), TYPE_LITERATURE, literatureQuestions2));
+
+        return quizzes;
+    }
+}
+________________________________________________________________________________________________________________________________________________________________________________________________
